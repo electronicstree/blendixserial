@@ -1,7 +1,7 @@
 
 # blendixserial add-on 
-[![Documentation](https://img.shields.io/badge/Docs-Documentation-blue?logo=readthedocs)](https://electronicstree.com/blendixserial-addon/)
-
+[![Documentation](https://img.shields.io/badge/Docs-Documentation-blue?logo=googledocs&logoColor=blue)](https://electronicstree.com/blendixserial-addon/)
+![Download](https://img.shields.io/badge/Download-v2.0.0-brightgreen?logo=files&logoColor=green)
 
 ![Logo](https://electronicstree.com/wp-content/uploads/2023/12/blendixserial_addon.png)
 
