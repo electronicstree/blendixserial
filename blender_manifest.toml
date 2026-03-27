@@ -1,0 +1,22 @@
+schema_version = "1.0.0"
+
+id = "blendixserial"
+version = "2.0.0"
+name = "blendixserial"
+tagline = "Connect Blender to External Devices via Simple UART (Serial Communication)"
+maintainer = "Usman"
+type = "add-on"
+
+website = "https://electronicstree.com/blendixserial-addon/"
+tags = ["Animation", "3D View", "Interface"]
+blender_version_min = "4.2.0"
+
+license = ["SPDX:GPL-3.0-or-later"]
+copyright = [
+   "2023-2026 Usman",
+   "2024-2026 electronicstree",
+]
+
+wheels = [
+  "./wheels/pyserial-3.5-py2.py3-none-any.whl",
+]
