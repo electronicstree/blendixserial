@@ -1,6 +1,7 @@
 
 # blendixserial add-on 
-[![Docs](https://img.shields.io/badge/Docs-Documentation-blue?style=for-the-badge)](https://electronicstree.com/blendixserial-addon/)
+![Static Badge](https://img.shields.io/badge/Docs-Documentation-blue?logo=readthedocs&link=https%3A%2F%2Felectronicstree.com%2Fblendixserial-addon%2F)
+
 
 ![Logo](https://electronicstree.com/wp-content/uploads/2023/12/blendixserial_addon.png)
 
