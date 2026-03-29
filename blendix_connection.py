@@ -4,7 +4,6 @@ import serial
 import serial.tools.list_ports
 import threading
 import queue
-import bpy
 from .debug_manager import debug_manager
 
 
@@ -59,6 +58,13 @@ class SerialThread:
         self.running = False  
         self.send_queue = queue.Queue() 
         self.mode = None  
+        self.protocol_format = 'CSV'
+        self.debug_enabled = False
+
+
+    def update_settings(self, scene):
+        self.protocol_format = scene.protocol_format
+        self.debug_enabled = scene.serial_debug_enabled
 
 
     def set_mode(self, mode):
@@ -69,9 +75,6 @@ class SerialThread:
 
 
     def serial_thread(self):
-
-        scene = bpy.context.scene
-        debug_manager.set_enabled(scene.serial_debug_enabled)
 
         debug_manager.event("[THREAD] Starting serial thread")
 
@@ -91,7 +94,7 @@ class SerialThread:
   
                 if current_mode in ['receive', 'both']:
 
-                    if bpy.context.scene.protocol_format == 'PROTOCOL':
+                    if self.protocol_format == 'PROTOCOL':
 
                         if ser.in_waiting:
                             data = ser.read(ser.in_waiting)
