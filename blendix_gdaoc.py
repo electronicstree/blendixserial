@@ -1,13 +1,13 @@
 import bpy
 from .blendix_connection import serial_thread, serial_connection
 import math
-import serial
 import struct
 from bpy.app.handlers import persistent
 from .debug_manager import debug_manager
 
 
 def timer_func():
+    serial_thread.update_settings(bpy.context.scene)
     if not hasattr(timer_func, "last_numerical_data"):
         timer_func.last_numerical_data = None
     if not hasattr(timer_func, "last_text_data"):
