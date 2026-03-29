@@ -42,6 +42,9 @@
 # - PySerial now bundled as a wheel (no pip/admin required)
 
 
+# 29/3/2026 - M.Usman - electronicstree.com
+#------------------------------------------
+# - Fixed thread-safety issue by removing bpy access from background thread
 
 
 
@@ -50,13 +53,12 @@ bl_info = {
     "author": "Usman",
     "description": "Connect Blender to External Devices via Simple UART (Serial Communication)",
     "blender": (4, 2, 0),
-    "version": (2, 0, 0),
+    "version": (2, 0, 1),
     "location": "View3D > Properties > blendixserial",
     "category": "3D View",
 }
 
 
-import bpy
 from . import auto_load
 
 
