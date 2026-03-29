@@ -58,6 +58,7 @@ bl_info = {
     "category": "3D View",
 }
 
+ADDON_VERSION = ".".join(map(str, bl_info["version"]))
 
 from . import auto_load
 
