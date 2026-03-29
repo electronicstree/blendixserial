@@ -1,7 +1,7 @@
 import bpy
 from bpy.types import Operator
 from .blendix_connection import serial_connection, serial_thread
-
+from . import ADDON_VERSION
 
 
 
@@ -345,18 +345,6 @@ class SerialThreadModeOperator(bpy.types.Operator):
         return {'FINISHED'}
     
 
-def get_addon_version():
-    try:
-        addon = bpy.context.preferences.addons.get(__package__)
-        if addon and addon.module:
-            mod = __import__(addon.module)
-            version = getattr(mod, "bl_info", {}).get("version", (0, 0, 0))
-            return ".".join(map(str, version))
-    except Exception:
-        pass
-
-    return "Unknown"
-
 class ShowInfoPopup(bpy.types.Operator):
     """blendixserial info"""
     bl_idname = "wm.object_prop_window_info"
@@ -371,7 +359,7 @@ class ShowInfoPopup(bpy.types.Operator):
     def draw(self, context):
         layout = self.layout
 
-        version_str = get_addon_version()
+        version_str = ADDON_VERSION
 
         box = layout.box()
         col = box.column(align=True)
