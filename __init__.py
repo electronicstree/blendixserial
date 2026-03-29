@@ -53,7 +53,7 @@ bl_info = {
     "author": "Usman",
     "description": "Connect Blender to External Devices via Simple UART (Serial Communication)",
     "blender": (4, 2, 0),
-    "version": (2, 0, 1),
+    "version": (2, 0, 2),
     "location": "View3D > Properties > blendixserial",
     "category": "3D View",
 }
