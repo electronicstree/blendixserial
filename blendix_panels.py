@@ -271,3 +271,4 @@ class UserInterfacePanel(Panel):
             text="Start Interactive Mode",
             icon='MOD_ARMATURE'
         )
+        layout.label(text="Press Esc or RMB to exit.")
