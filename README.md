@@ -1,7 +1,7 @@
 
 # blendixserial add-on 
-[![Download](https://img.shields.io/badge/Blender%20Addon-blendixserial%20v2.0.1-orange?logo=blender&logoColor=orange&color=orange)](https://github.com/username/repo/releases/latest)
-[![Download](https://img.shields.io/badge/Arduino%20Library-blendixserial%20v2.0.0-brightgreen?logo=arduino&logoColor=brightgreen)](https://github.com/electronicstree/blendixserial-arduino/archive/refs/tags/2.0.0.zip)
+[![Download](https://img.shields.io/badge/Blender%20Addon-blendixserial%20Latest-orange?logo=blender&logoColor=orange&color=orange)](https://github.com/electronicstree/blendixserial/releases/latest)
+[![Download](https://img.shields.io/badge/Arduino%20Library-blendixserial%20Latest-brightgreen?logo=arduino&logoColor=brightgreen)](https://github.com/electronicstree/blendixserial-arduino/releases/latest)
 [![Documentation](https://img.shields.io/badge/Addon-Documentation-blue?logo=googledocs&logoColor=blue)](https://electronicstree.com/blendixserial-addon/)
 
 
