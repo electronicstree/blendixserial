@@ -1,7 +1,7 @@
 import bpy
 from bpy.types import Operator
 from .blendix_connection import serial_connection, serial_thread
-import addon_utils
+
 
 
 
@@ -345,19 +345,22 @@ class SerialThreadModeOperator(bpy.types.Operator):
         return {'FINISHED'}
     
 
+def get_addon_version():
+    try:
+        addon = bpy.context.preferences.addons.get(__package__)
+        if addon and addon.module:
+            mod = __import__(addon.module)
+            version = getattr(mod, "bl_info", {}).get("version", (0, 0, 0))
+            return ".".join(map(str, version))
+    except Exception:
+        pass
 
-
-
-import bpy
-import sys
-
-
-
+    return "Unknown"
 
 class ShowInfoPopup(bpy.types.Operator):
-    """About BlendixSerial"""
+    """blendixserial info"""
     bl_idname = "wm.object_prop_window_info"
-    bl_label = "About BlendixSerial"
+    bl_label = "About blendixserial"
 
     def execute(self, context):
         return {'FINISHED'}
@@ -368,20 +371,14 @@ class ShowInfoPopup(bpy.types.Operator):
     def draw(self, context):
         layout = self.layout
 
-        # Get version safely
-        try:
-            addon_module = sys.modules[__package__]
-            version = addon_module.bl_info.get("version", (0, 0, 0))
-            version_str = ".".join(map(str, version))
-        except:
-            version_str = "Unknown"
+        version_str = get_addon_version()
 
         box = layout.box()
         col = box.column(align=True)
 
         # Header 
         header = col.row()
-        header.label(text="BlendixSerial", icon="PLUGIN")
+        header.label(text="blendixserial", icon="PLUGIN")
 
         col.label(text=f"Version {version_str}")
         col.separator()
@@ -410,7 +407,7 @@ class ShowInfoPopup(bpy.types.Operator):
             "wm.url_open",
             text="GitHub",
             icon="URL"
-        ).url = "https://github.com/electronicstree"
+        ).url = "https://github.com/electronicstree/blendixserial"
 
         col.separator()
 
