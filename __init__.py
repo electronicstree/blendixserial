@@ -47,18 +47,12 @@
 # - Fixed thread-safety issue by removing bpy access from background thread
 
 
+# 4/4/2026 - M.Usman - electronicstree.com
+#------------------------------------------
+# - Added new gizmo function for improved rotary knob interaction.
+# - Serial engine migrated from threading to subprocess + TCP for better stability.
 
-bl_info = {
-    "name": "blendixserial",
-    "author": "Usman",
-    "description": "Connect Blender to External Devices via Simple UART (Serial Communication)",
-    "blender": (4, 2, 0),
-    "version": (2, 0, 2),
-    "location": "View3D > Properties > blendixserial",
-    "category": "3D View",
-}
 
-ADDON_VERSION = ".".join(map(str, bl_info["version"]))
 
 from . import auto_load
 
