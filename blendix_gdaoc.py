@@ -117,7 +117,7 @@ def timer_func():
     global _last_numerical_data, _last_text_data
 
     scene = bpy.context.scene
-    worker_manager.update_settings(scene)
+    worker_manager.update_settings(bpy.context.window_manager)
     events = worker_manager.poll_events()
     latest_numerical = None
     latest_text = None
@@ -129,13 +129,13 @@ def timer_func():
             status = evt.get("status", "")
             msg    = evt.get("msg", "")
             debug_manager.event(f"[STATUS] {status}: {msg}")
-            props = scene.serial_connection_properties
+            wm = bpy.context.window_manager          # runtime state on WindowManager
             if status == "connected":
-                props.is_connected      = True
-                props.connection_status = msg or "Connected"
+                wm.serial_is_connected      = True
+                wm.serial_connection_status = msg or "Connected"
             elif status in ("disconnected", "error"):
-                props.is_connected      = False
-                props.connection_status = msg or status.capitalize()
+                wm.serial_is_connected      = False
+                wm.serial_connection_status = msg or status.capitalize()
 
         elif tag in ("CSV", "PROTOCOL") and not worker_manager.pause_movement:
             # Only parse data events when movement is allowed
@@ -173,8 +173,9 @@ def send_serial_data():
     ):
         return
 
+    wm = bpy.context.window_manager
     try:
-        if scene.protocol_format == "CSV":
+        if wm.serial_thread_format == "CSV":          
             parts = []
             decimals = scene.send_decimal_places
             for item in scene.send_object_collection:
@@ -211,7 +212,7 @@ def send_serial_data():
                 debug_manager.data("[TX] No protocol data to send")
 
     except Exception as e:
-        fmt = "CSV" if scene.protocol_format == "CSV" else "Protocol"
+        fmt = "CSV" if wm.serial_thread_format == "CSV" else "Protocol"  
         debug_manager.error(f"[TX] {fmt} send error → {e}")
         worker_manager.disconnect()
 
