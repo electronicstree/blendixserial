@@ -53,17 +53,88 @@
 # - Serial engine migrated from threading to subprocess + TCP for better stability.
 
 
+# 5/4/2026 - M.Usman - electronicstree.com
+# - Replaced auto_load with explicit module registration (Blender extension platform requirement).
+# - Moved runtime-only properties (connection state, mode, format, debug) to WindowManager.
 
-from . import auto_load
+
+import bpy
+import inspect
+
+from . import (
+    debug_manager,
+    blendix_connection,
+    blendix_properties,
+    blendix_vit_properties,
+    blendix_operators,
+    blendix_vit_operators,
+    blendix_vit_gizmo,
+    blendix_panels,
+    blendix_gdaoc,
+)
 
 
-auto_load.init()
+
+_modules = [
+    debug_manager,
+    blendix_connection,
+    blendix_properties,
+    blendix_vit_properties,
+    blendix_operators,
+    blendix_vit_operators,
+    blendix_vit_gizmo,
+    blendix_panels,
+    blendix_gdaoc,
+]
+
+_BLENDER_BASES = None
+
+
+def _get_blender_bases():
+    global _BLENDER_BASES
+    if _BLENDER_BASES is None:
+        _BLENDER_BASES = tuple(
+            getattr(bpy.types, n) for n in (
+                "Panel", "Operator", "PropertyGroup", "AddonPreferences",
+                "Header", "Menu", "Node", "NodeSocket", "NodeTree",
+                "UIList", "RenderEngine", "Gizmo", "GizmoGroup",
+            )
+        )
+    return _BLENDER_BASES
+
+
+_classes = []
+
+
+def _collect_classes():
+    bases = _get_blender_bases()
+    seen, result = set(), []
+    for mod in _modules:
+        for _, obj in inspect.getmembers(mod, inspect.isclass):
+            if obj in seen:
+                continue
+            seen.add(obj)
+            if issubclass(obj, bases) and not getattr(obj, "is_registered", False):
+                result.append(obj)
+    return result
 
 
 def register():
-    auto_load.register()
-
+    global _classes
+    _classes = _collect_classes()
+    for cls in _classes:
+        bpy.utils.register_class(cls)
+    for mod in _modules:
+        if hasattr(mod, "register"):
+            mod.register()
 
 
 def unregister():
-    auto_load.unregister()
+    for mod in reversed(_modules):
+        if hasattr(mod, "unregister"):
+            mod.unregister()
+    for cls in reversed(_classes):
+        try:
+            bpy.utils.unregister_class(cls)
+        except RuntimeError:
+            pass
