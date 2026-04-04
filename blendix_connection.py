@@ -1,370 +1,301 @@
-import struct
-import time
-import serial
-import serial.tools.list_ports
-import threading
-import queue
+# blendixserial (subprocess + TCP edition)
+
+import socket
+import json
+import subprocess
+import sys
+import os
+import bpy
+import select
+
 from .debug_manager import debug_manager
 
 
-class SerialConnection:
-
-    def __init__(self, port_name='', baud_rate=9600):
-        self._serial_connection = None
-        self._port_name = port_name
-        self._baud_rate = baud_rate
+def _find_free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
 
 
-    def connect_serial(self):
+def list_ports():
+    try:
+        import serial.tools.list_ports
+        return [p.device for p in serial.tools.list_ports.comports()]
+    except Exception:
+        return []
+
+
+
+#  Port-list watcher
+_PORT_POLL_INTERVAL = 2.0       
+_last_known_ports: set = set()   
+
+
+def _port_watcher() -> float | None:
+    global _last_known_ports
+
+    current_ports = set(list_ports())
+    if current_ports != _last_known_ports:
+        _last_known_ports = current_ports
+
+        for window in bpy.context.window_manager.windows:
+            for area in window.screen.areas:
+                if area.type == "VIEW_3D":
+                    area.tag_redraw()
+
+    return _PORT_POLL_INTERVAL
+
+
+class WorkerManager:
+    def __init__(self):
+        self._process: subprocess.Popen | None = None
+        self._sock: socket.socket | None = None
+        self._tcp_port: int = 0
+        self._recv_buf: str = ""
+
+        self.pause_movement: bool = True
+        self.mode: str = "receive"
+        self.protocol_format: str = "CSV"
+        self._connected: bool = False
+
+        #  Persistent connect request (eliminates race)
+        self._wants_connect: bool = False
+        self._connect_port: str = ""
+        self._connect_baud: int = 9600
+        self._connect_fmt: str = "CSV"
+
+    @property
+    def is_connected(self) -> bool:
+        return self._connected and self._sock is not None
+
+    def _worker_script_path(self) -> str:
+        return os.path.join(os.path.dirname(__file__), "serial_worker.py")
+
+    def _start_worker(self):
+        if self._process is not None:
+            return
+        self._tcp_port = _find_free_port()
+        script = self._worker_script_path()
+        env = os.environ.copy()
         try:
-            if self._serial_connection is not None:
-                self._serial_connection.close()
+            import serial
+            env["PYTHONPATH"] = os.path.dirname(os.path.dirname(serial.__file__))
+            #print(f"[blendixserial] PYTHONPATH → {env['PYTHONPATH']}")
+        except ImportError:
+            print(
+                "[blendixserial] ERROR: PySerial not found.\n")
+            return
 
-            self._serial_connection = serial.Serial(self._port_name, self._baud_rate)
-            debug_manager.event(f"[SERIAL] Connected → {self._port_name} @ {self._baud_rate}")
-        except serial.SerialException as error:
-            debug_manager.error(f"[SERIAL] Connection FAILED → {error}")
-            self._serial_connection = None
+        self._process = subprocess.Popen(
+            [sys.executable, script, str(self._tcp_port)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            env=env,
+        )
+        debug_manager.event(f"[WORKER] Subprocess started (PID {self._process.pid}), port {self._tcp_port}")
 
+    def _ensure_socket(self) -> bool:
+        if self._sock is not None:
+            return True
+        if self._process is None:
+            self._start_worker()
+            return False
 
-    def disconnect(self, serial_thread):
-        if serial_thread:
-            serial_thread.stop_serial_thread()  
-        
-        if self._serial_connection is not None and self._serial_connection.is_open:
-            try:
-                self._serial_connection.flush()
-                self._serial_connection.close()
-                self._serial_connection = None
-                debug_manager.event(f"[SERIAL] Disconnected from {self._port_name}")
-
-            except Exception as e:
-                debug_manager.error(f"[SERIAL] Disconnect failed → {type(e).__name__}: {e}")
-
-
-    @staticmethod
-    def list_ports():
-        return [port.device for port in serial.tools.list_ports.comports()]
-
-
-
-
-class SerialThread:
-
-    def __init__(self, serial_connection):
-        self.serial_connection = serial_connection
-        self.data_queue = queue.Queue()
-        self.pause_movement = True
-        self.running = False  
-        self.send_queue = queue.Queue() 
-        self.mode = None  
-        self.protocol_format = 'CSV'
-        self.debug_enabled = False
-
-
-    def update_settings(self, scene):
-        self.protocol_format = scene.protocol_format
-        self.debug_enabled = scene.serial_debug_enabled
-
-
-    def set_mode(self, mode):
-        if mode in ["send", "receive", "both"]:
-            if self.mode != mode:  
-                self.mode = mode
-                debug_manager.event(f"[THREAD] Mode changed → {self.mode}")
-
-
-    def serial_thread(self):
-
-        debug_manager.event("[THREAD] Starting serial thread")
-
-        self.running = True
-        self.rx_buffer = bytearray()
-
-
-        while self.running:
-            try:
-                ser = self.serial_connection._serial_connection
-                current_mode = self.mode
-
-                if ser is None or not ser.is_open:
-                    debug_manager.event("[THREAD] Serial not open. Exiting.")
-                    break
-                # RECEIVE SECTION
-  
-                if current_mode in ['receive', 'both']:
-
-                    if self.protocol_format == 'PROTOCOL':
-
-                        if ser.in_waiting:
-                            data = ser.read(ser.in_waiting)
-                            self.rx_buffer.extend(data)
-                        while True:
-
-                            if len(self.rx_buffer) < 5:
-                                break
-
-                            if self.rx_buffer[0] != 0x02:
-                                self.rx_buffer.pop(0)
-                                continue
-
-                            msg_type = self.rx_buffer[1]
-                            obj_count = self.rx_buffer[2]
-                            payload_len = struct.unpack(">H", self.rx_buffer[3:5])[0]
-
-                            full_packet_len = 5 + payload_len + 2
-
-                            if len(self.rx_buffer) < full_packet_len:
-                                break  
-
-                            full_msg = self.rx_buffer[:full_packet_len]
-
-                            if full_msg[-1] != 0x03:
-                                self.rx_buffer.pop(0)
-                                continue
-
-                            received_checksum = full_msg[-2]
-                            calc_checksum = 0
-                            for b in full_msg[1:-2]:
-                                calc_checksum ^= b
-
-                            if calc_checksum != received_checksum:
-                                debug_manager.error("[RX-PROTOCOL] Checksum mismatch")
-                                self.rx_buffer.pop(0)
-                                continue
-
-                            self.data_queue.put(("PROTOCOL", bytes(full_msg)))
-
-                            debug_manager.data(f"[RX-PROTOCOL] Packet received ({len(full_msg)} bytes)")
-
-                            self.rx_buffer = self.rx_buffer[full_packet_len:]
-
-                    # CSV MODE
-                    else:
-                        if ser.in_waiting:
-                            data = ser.readline().decode(errors='replace').rstrip()
-
-                            debug_manager.data(f"[RX-CSV] {data}")
-
-                            if not data:
-                                continue
-
-                            if self.is_valid_data(data):
-                                self.data_queue.put(("CSV", data))
-                            else:
-                                debug_manager.error(f"[RX-CSV] Invalid data → {data}")
-
-                # SENDING SECTION 
-                if current_mode in ['send', 'both']:
-                    try:
-                        if not self.send_queue.empty():
-                            data_to_send = self.send_queue.get_nowait()
-                            if self.is_valid_send_data(data_to_send):
-                                self.send_serial_data(data_to_send)
-                        else:
-                            time.sleep(0.005)
-                    except queue.Empty:
-                        pass
-
-            except serial.SerialException as error:
-                debug_manager.error(f"[THREAD] Serial exception → {error}")
-                break
-        debug_manager.event("[THREAD] Serial thread stopped")
-
-
-    def start_serial_thread(self):
-        thread = threading.Thread(target=self.serial_thread)
-        thread.daemon = True  
-        thread.start()
-
-    def stop_serial_thread(self):
-        self.running = False
-
-    def get_data_from_queue(self):
         try:
-            return self.data_queue.get_nowait()
-        except queue.Empty:
-            return None
-        
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.setblocking(False)
+            err = sock.connect_ex(("127.0.0.1", self._tcp_port))
 
-
-    def is_valid_data(self, serial_data):
-        if not serial_data:
-            return False  
-
-        parts = serial_data.split(';')
-
-        if len(parts[0].strip()) > 0:
-            numerical_part = parts[0].strip()
-            try:
-                list(map(float, numerical_part.split(',')))
-            except ValueError:
+            if err not in (0, 10035, 115):
+                sock.close()
                 return False
 
-        if len(parts) > 1:
-            text_part = parts[1].strip()
-            if text_part:
-                return True  
-        return True
-
-
-
-    def parse_serial_data(self, serial_data):
-        if not serial_data:
-            return [], ""
-
-        numerical_values = []
-        text_data = ""
-
-        if ';' in serial_data:
-            parts = serial_data.split(';', 1)
-            numerical_part = parts[0].strip()
-            
-            if numerical_part:
-                try:
-                    numerical_values = list(map(float, numerical_part.split(',')))  
-                except ValueError:
-                    pass
-
-            if len(parts) > 1:
-                text_data = parts[1].strip()
-
-        elif serial_data.startswith(';'):
-            text_data = serial_data[1:].strip()  
-
-        return numerical_values, text_data
-
-
-
-
-    def parse_protocol_message(self, full_msg):
-        try:
-            if len(full_msg) < 7 or full_msg[0] != 0x02 or full_msg[-1] != 0x03:
-                return [], ""
-
-            msg_type = full_msg[1]
-            obj_count = full_msg[2]
-            payload_len = struct.unpack('>H', full_msg[3:5])[0]
-            debug_manager.data(f"[PARSE] msg_type={msg_type}, obj_count={obj_count}")
-            payload = full_msg[5:5 + payload_len]
-            received_checksum = full_msg[5 + payload_len]
-
-            calc = 0
-            for b in full_msg[1:5 + payload_len]:
-                calc ^= b
-            if calc != received_checksum:
-                debug_manager.error("[POTOCOL] checksum fail")
-                return [], ""
-
-            numerical = []
-            text = ""
-            pos = 0
-
-            if msg_type in (1, 3):
-                for _ in range(obj_count):
-                    if pos + 3 > len(payload):
-                        break
-                    obj_id, bitmask = struct.unpack('>BH', payload[pos:pos+3])
-                    pos += 3
-
-                    for bit in range(9):
-                        if bitmask & (1 << bit):
-                            if pos + 4 > len(payload):
-                                break
-                            val = struct.unpack('>f', payload[pos:pos+4])[0]
-                            numerical.append(val)
-                            pos += 4
-                        else:
-                            numerical.append(None)
-
-            if msg_type in (2, 3):
-                if msg_type == 3 and pos < len(payload):
-                    text_len = payload[pos]
-                    pos += 1
-                    if pos + text_len <= len(payload):
-                        text = payload[pos:pos + text_len].decode('utf-8', errors='replace')
-                elif msg_type == 2:
-                    text = payload.decode('utf-8', errors='replace')
-                    
-            debug_manager.data(f"[PARSED] msg_type={msg_type}, obj_count={obj_count}, "f"values={numerical}, text='{text}'")
-            return numerical, text
+            # Give worker a bit more time on first launch
+            _, writable, _ = select.select([], [sock], [], 0.08)
+            if writable:
+                self._sock = sock
+                debug_manager.event(f"[WORKER] Socket connected → 127.0.0.1:{self._tcp_port}")
+                return True
+            else:
+                sock.close()
+                return False
 
         except Exception as e:
-            debug_manager.error(f"[POTOCOL] parse error → {e}")
-            return [], ""
-
-
-    def is_valid_send_data(self, send_data):
-        if isinstance(send_data, bytes):
-            if len(send_data) < 7:
-                return False
-            if not (send_data.startswith(b'\x02') and send_data.endswith(b'\x03')):
-                return False
-            return True
-
-        # Old CSV path
-        if not isinstance(send_data, str):
-            return False
-        
-        if not send_data.endswith(';'):
-            return False
-        
-        try:
-            numerical_data = send_data[:-1].split(',')
-            for value in numerical_data:
-                if '.' in value:
-                    float_value = float(value)
-                    if len(value.split('.')[-1]) > 2:  
-                        return False
-                else:
-                    int(value)  
-            return True
-        except (ValueError, IndexError):
+            debug_manager.error(f"[WORKER] Socket creation failed: {e}")
             return False
 
-
-    def send_serial_data(self, send_data):
-        try:
-            if self.serial_connection._serial_connection is not None and self.serial_connection._serial_connection.is_open:
-                
-                if isinstance(send_data, str):
-                    to_write = send_data
-                    if not to_write.endswith('\n'):
-                        to_write += '\n'
-                    write_bytes = to_write.encode('utf-8')
-                
-                elif isinstance(send_data, bytes):
-                    write_bytes = send_data
-                else:
-                    debug_manager.error(f"[TX] Unsupported data type: {type(send_data).__name__}")
-                    return
-
-                # Actual write
-                self.serial_connection._serial_connection.write(write_bytes)
-                self.serial_connection._serial_connection.flush()
-                debug_manager.data(f"[TX] Sent {len(write_bytes)} bytes")
-            else:
-                debug_manager.error("[TX] Serial not open")
-                    
-        except serial.SerialException as error:
-            debug_manager.error(f"[TX] Send failed → {error}")
-
-
-
-
-    def queue_send_data(self, data):
-
-        if isinstance(data, str):
-            prepared = data  
-        elif isinstance(data, bytes):
-            prepared = data
-        else:
-            debug_manager.error("[QUEUE] Unsupported data type")
+    def _send_cmd(self, obj: dict):
+        if self._sock is None:
             return
-        self.send_queue.put(prepared)
+        try:
+            line = json.dumps(obj) + "\n"
+            self._sock.sendall(line.encode("utf-8"))
+        except Exception as e:
+            debug_manager.error(f"[WORKER] Send failed: {e}")
+            self._sock = None
+
+    def poll_events(self) -> list:
+        events = []
+
+        # Ensure worker + socket
+        self._ensure_socket()
+
+        # If user wants to connect and socket is ready → send CONNECT now
+        if self._wants_connect and self._sock is not None:
+            cmd = {
+                "cmd": "CONNECT",
+                "port": self._connect_port,
+                "baud": self._connect_baud,
+                "format": self._connect_fmt
+            }
+            self._send_cmd(cmd)
+            debug_manager.event(f"[MANAGER] CONNECT sent → {self._connect_port} @ {self._connect_baud} [{self._connect_fmt}]")
+
+        # Read incoming data
+        if self._sock is not None:
+            try:
+                while True:
+                    chunk = self._sock.recv(4096)
+                    if not chunk:
+                        self._sock = None
+                        self._connected = False
+                        break
+                    self._recv_buf += chunk.decode("utf-8", errors="replace")
+            except BlockingIOError:
+                pass
+            except Exception:
+                self._sock = None
+                self._connected = False
+
+        # Process received lines
+        while "\n" in self._recv_buf:
+            line, self._recv_buf = self._recv_buf.split("\n", 1)
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                evt = json.loads(line)
+
+                if evt.get("tag") == "STATUS":
+                    status = evt.get("status", "")
+                    msg = evt.get("msg", "")
+                    debug_manager.event(f"[STATUS] {status}: {msg}")
+
+                    if status == "connected":
+                        self._connected = True
+                        self._wants_connect = False          # SUCCESS → stop retrying
+                    elif status in ("disconnected", "error"):
+                        self._connected = False
+
+                elif evt.get("tag") == "LOG":
+                    msg = evt.get("msg", "")
+                    level = evt.get("level", "info")
+                    if level == "error":
+                        debug_manager.error(msg)
+                    else:
+                        debug_manager.event(msg)
+                    continue
+
+                events.append(evt)
+
+            except json.JSONDecodeError:
+                debug_manager.error(f"[WORKER] Bad JSON: {line}")
+
+        return events
+
+    # PUBLIC API
+    def connect(self, port: str, baud: int, fmt: str = "CSV"):
+        self._start_worker()
+        self.protocol_format = fmt
+
+        self._connect_port = port
+        self._connect_baud = baud
+        self._connect_fmt = fmt
+        self._wants_connect = True
+
+        debug_manager.event(f"[MANAGER] Connect REQUESTED → {port} @ {baud} [{fmt}]")
+        self._ensure_socket()   # immediate attempt
+
+    def disconnect(self):
+        self._send_cmd({"cmd": "DISCONNECT"})
+        self._connected = False
+        self._wants_connect = False
+
+    def shutdown(self):
+        self._send_cmd({"cmd": "SHUTDOWN"})
+        if self._sock:
+            try:
+                self._sock.close()
+            except Exception:
+                pass
+            self._sock = None
+        if self._process:
+            try:
+                self._process.terminate()
+                self._process.wait(timeout=1)
+            except Exception:
+                pass
+            self._process = None
+        self._connected = False
+        self._wants_connect = False
+
+    def set_mode(self, mode: str):
+        if mode in ("send", "receive", "both") and self.mode != mode:
+            self.mode = mode
+            self._send_cmd({"cmd": "SET_MODE", "mode": mode})
+            debug_manager.event(f"[MANAGER] Mode → {mode}")
+
+    def update_settings(self, scene):
+        fmt = scene.protocol_format
+        if fmt != self.protocol_format:
+            self.protocol_format = fmt
+            self._send_cmd({"cmd": "SET_FORMAT", "format": fmt})
+
+    def send(self, data):
+        if self._sock is None:
+            return
+        if isinstance(data, str):
+            self._send_cmd({"cmd": "SEND", "data": data})
+        elif isinstance(data, bytes):
+            self._send_cmd({"cmd": "SEND_BYTES", "data": data.hex()})
 
 
+# Singleton
+worker_manager = WorkerManager()
 
 
-serial_connection = SerialConnection()
-serial_thread = SerialThread(serial_connection)
+def ensure_worker():
+    if worker_manager._process is None:
+        worker_manager._start_worker()
+
+
+def _update_serial_thread_mode(self, context):
+    worker_manager.set_mode(self.serial_thread_modes)
+
+
+def register():
+    bpy.types.Scene.serial_thread_modes = bpy.props.EnumProperty(
+        name="Serial Thread Mode",
+        items=[('send', "Send", ""), ('receive', "Receive", ""), ('both', "Bidirectional", "")],
+        default='receive',
+        update=_update_serial_thread_mode,
+    )
+    bpy.types.Scene.protocol_format = bpy.props.EnumProperty(
+        name="Data Format",
+        items=[('CSV', "CSV", ""), ('PROTOCOL', "Protocol", "")],
+        default='CSV',
+    )
+
+    # Start the port watcher timer.
+    if not bpy.app.timers.is_registered(_port_watcher):
+        bpy.app.timers.register(_port_watcher, first_interval=_PORT_POLL_INTERVAL, persistent=True)
+
+
+def unregister():
+    # Stop the port watcher timer before tearing down.
+    if bpy.app.timers.is_registered(_port_watcher):
+        bpy.app.timers.unregister(_port_watcher)
+
+    del bpy.types.Scene.serial_thread_modes
+    del bpy.types.Scene.protocol_format
+    worker_manager.shutdown()
