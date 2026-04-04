@@ -1,14 +1,30 @@
 import bpy
 from bpy.types import PropertyGroup
 from bpy.props import EnumProperty, BoolProperty, StringProperty, PointerProperty, CollectionProperty, FloatProperty
-from .blendix_connection import SerialConnection, serial_thread
+from .blendix_connection import worker_manager, list_ports
+
+
+
+# Called automatically by Blender whenever connection_status is written to.
+def _status_update(self, context):
+    for window in context.window_manager.windows:
+        for area in window.screen.areas:
+            if area.type == "VIEW_3D":
+                area.tag_redraw()
+
+
+def _poll_font_object(self, obj):
+    return obj.type == 'FONT'
 
 
 class SerialConnectionProperties(PropertyGroup):
     port_name: EnumProperty(
         name="Port Name",
         description="Select a serial port",
-        items=lambda self, context: [(port, port, "") for port in SerialConnection.list_ports()]
+        items=lambda self, context: (
+            [(port, port, "") for port in list_ports()]
+            or [("NONE", "No port available", "")]
+        )
     ) # type: ignore
 
     baud_rate: EnumProperty(
@@ -38,7 +54,8 @@ class SerialConnectionProperties(PropertyGroup):
     connection_status: StringProperty(
         name="Connection Status",
         default="Disconnected",
-        description="Shows the current connection status"
+        description="Shows the current connection status",
+        update=_status_update,
     ) # type: ignore
 
 
@@ -110,9 +127,9 @@ class DynamicObjectProperties(PropertyGroup):
 
     
     text_object_axis: PointerProperty(
-    name="Text Object for Axis",
-    type=bpy.types.Object,
-    poll=lambda self, obj: obj.type == 'FONT'  
+        name="Text Object for Axis",
+        type=bpy.types.Object,
+        poll=_poll_font_object,
     ) # type: ignore
 
 
@@ -185,108 +202,62 @@ class DynamicSendObjectProperties(PropertyGroup):
 
 
 
-bpy.types.Scene.received_text = bpy.props.PointerProperty(
-    name="Font", 
-    description="Select Text Object to display received text data in the 3D View",
-    type=bpy.types.Object,
-    poll=lambda self, obj: obj.type == 'FONT' 
-    )
-
-
 def update_mode(self, context):
-    serial_thread.set_mode(self.serial_thread_modes)
+    worker_manager.set_mode(self.serial_thread_modes)
 
 
-
-
-bpy.types.Scene.serial_thread_modes = bpy.props.EnumProperty(
-    name="Serial Thread Mode",
-    description="Choose the mode for the serial thread",
-    items=[
-        ('send', "Send", "Only send data"),
-        ('receive', "Receive", "Only receive data"),
-        ('Bidirectional', "Bidirectional", "Send and receive data"),
-    ],
-    default='receive',
-    update=update_mode, 
-)
-
-
-
-bpy.types.Scene.updateSceneDelay = FloatProperty(
-        name="Update Scene",
-        default=1,
-        min=0.001,
-        max=2,
-        description="Delay between scene anination updates",
-        step=0.001
-    ) # type: ignore
-
-
-bpy.types.Scene.frame_skip_interval = bpy.props.IntProperty(
-        name="Frame Skip Interval",
-        description="Number of frames to skip before sending data again (set to 0 to send data every frame)",
-        default=1,  
-        min=0  
-    )
-
-bpy.types.Scene.axis_text_newline = bpy.props.BoolProperty(
-    name="Display Axis on New Lines",
-    description="Display each axis value on a new line instead of a single line",
-    default=False
-)
-
-bpy.types.Scene.send_data_method = bpy.props.EnumProperty(
-        name="Send Method",
-        description="Choose how to send data: on frame change or using timer",
-        items=[
-            ('KEYFRAME', "Keyframe Based", "Send data using frame change events"),
-            ('TIMER', "Timer Based", "Send data using a timer function")
-        ],
-        default='KEYFRAME'
-    )
-
-bpy.types.Scene.send_decimal_places = bpy.props.IntProperty(
-    name="Decimal Places",
-    description="Number of decimal places to use when sending transform values",
-    default=2,
-    min=0,
-    max=6,
-    soft_min=0,
-    soft_max=4
-)
-
-
-bpy.types.Scene.protocol_format = bpy.props.EnumProperty(
-    name="Data Format",
-    description="Choose serial data format: CSV (legacy) or Protocol (efficient)",
-    items=[
-        ('CSV', "CSV", "Original fixed CSV format"),
-        ('PROTOCOL', "Protocol", "New binary protocol with bitmasks"),
-    ],
-    default='CSV',
-)
-
-
-bpy.types.Scene.axis_text_mode = bpy.props.EnumProperty(
-    name="Axis Text Mode",
-    items=[
-        ('GROUP', "Grouped", "Show XYZ on one line"),
-        ('AXIS', "Per Axis", "Show each axis on a new line"),
-    ],
-    default='GROUP'
-)
 
 def register():
-    bpy.types.Scene.serial_connection_properties = bpy.props.PointerProperty(type=SerialConnectionProperties)
-    bpy.types.Scene.custom_object_collection = CollectionProperty(type=DynamicObjectProperties)
-    bpy.types.Scene.received_text
-    bpy.types.Scene.my_ui_tabs = bpy.props.PointerProperty(type=MyUIPanelTabs)
-    bpy.types.Scene.send_object_collection = CollectionProperty(type=DynamicSendObjectProperties)
-    bpy.types.Scene.serial_thread_modes
-    bpy.types.Scene.frame_skip_interval
- 
+    # PropertyGroup bindings
+    bpy.types.Scene.serial_connection_properties = PointerProperty(
+        type=SerialConnectionProperties
+    )
+    bpy.types.Scene.custom_object_collection = CollectionProperty(
+        type=DynamicObjectProperties
+    )
+    bpy.types.Scene.send_object_collection = CollectionProperty(
+        type=DynamicSendObjectProperties
+    )
+    bpy.types.Scene.my_ui_tabs = PointerProperty(
+        type=MyUIPanelTabs
+    )
+
+    # Plain Scene properties 
+    bpy.types.Scene.received_text = PointerProperty(
+        name="Font",
+        description="Select Text Object to display received text data in the 3D View",
+        type=bpy.types.Object,
+        poll=_poll_font_object,
+    )
+    bpy.types.Scene.axis_text_newline = BoolProperty(
+        name="Display Axis on New Lines",
+        description="Display each axis value on a new line instead of a single line",
+        default=False
+    )
+    bpy.types.Scene.axis_text_mode = EnumProperty(
+        name="Axis Text Mode",
+        items=[
+            ('GROUP', "Grouped",  "Show XYZ on one line"),
+            ('AXIS',  "Per Axis", "Show each axis on a new line"),
+        ],
+        default='GROUP'
+    )
+    bpy.types.Scene.updateSceneDelay = FloatProperty(
+        name="Update Scene",
+        description="Delay between scene animation updates",
+        default=1.0,
+        min=0.001,
+        max=2.0,
+        step=0.001
+    )
+
 
 def unregister():
+    del bpy.types.Scene.serial_connection_properties
+    del bpy.types.Scene.custom_object_collection
+    del bpy.types.Scene.send_object_collection
+    del bpy.types.Scene.my_ui_tabs
     del bpy.types.Scene.received_text
-    del bpy.types.Scene.serial_thread_modes
+    del bpy.types.Scene.axis_text_newline
+    del bpy.types.Scene.axis_text_mode
+    del bpy.types.Scene.updateSceneDelay
