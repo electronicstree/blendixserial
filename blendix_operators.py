@@ -28,8 +28,7 @@ class RemoveCustomObject(Operator):
         return {"FINISHED"}
 
 
-
-#  Settings popup  (receive side)
+#  Settings popup (receive side)
 class ShowSettingsPopup(bpy.types.Operator):
     """Show Settings Popup"""
     bl_idname = "wm.object_prop_window"
@@ -48,7 +47,7 @@ class ShowSettingsPopup(bpy.types.Operator):
         scene  = context.scene
         item   = scene.custom_object_collection[self.index]
 
-        layout.use_property_split   = False
+        layout.use_property_split    = False
         layout.use_property_decorate = False
 
         layout.label(text=f"Object {self.index + 1} Transform Settings",
@@ -108,13 +107,12 @@ class ResetTransformsOperator(bpy.types.Operator):
     def execute(self, context):
         obj = context.scene.objects.get(self.object_name)
         if obj is not None:
-            obj.location      = (0, 0, 0)
+            obj.location       = (0, 0, 0)
             obj.rotation_euler = (0, 0, 0)
-            obj.scale         = (1, 1, 1)
+            obj.scale          = (1, 1, 1)
             return {"FINISHED"}
         self.report({"WARNING"}, f"Object '{self.object_name}' not found.")
         return {"CANCELLED"}
-
 
 
 #  Movement control
@@ -140,7 +138,6 @@ class StopMovementOperator(Operator):
         return {"FINISHED"}
 
 
-
 #  Serial connect / disconnect
 class ConnectSerialOperator(Operator):
     """Click to connect to a serial port."""
@@ -148,28 +145,26 @@ class ConnectSerialOperator(Operator):
     bl_label  = "Connect to Serial"
 
     def execute(self, context):
-        props = context.scene.serial_connection_properties
-        port  = props.port_name
-        baud  = int(props.baud_rate)
-        fmt   = context.scene.protocol_format
+        scene  = context.scene
+        wm     = context.window_manager
+        props  = scene.serial_connection_properties
+        port   = props.port_name
+        baud   = int(props.baud_rate)
+        fmt    = wm.serial_thread_format          
 
         if port == "NONE":
             self.report({"WARNING"}, "No serial port available. Please connect a device first.")
             return {"CANCELLED"}
 
-        # Request connection through the manager
         worker_manager.connect(port, baud, fmt)
+        worker_manager.set_mode(wm.serial_thread_modes)  
 
-        # Set current mode
-        worker_manager.set_mode(context.scene.serial_thread_modes)
-
-        # Optimistic UI state — this is fine and standard
-        props.is_connected     = True
-        props.connection_status = "Connecting…"
+        wm.serial_is_connected      = True           
+        wm.serial_connection_status = "Connecting…"  
 
         self.report({"INFO"}, f"Connecting to {port} @ {baud}")
         return {"FINISHED"}
-    
+
 
 class DisconnectSerialOperator(Operator):
     """Click to disconnect from a serial port."""
@@ -178,12 +173,11 @@ class DisconnectSerialOperator(Operator):
 
     def execute(self, context):
         worker_manager.disconnect()
-        props = context.scene.serial_connection_properties
-        props.is_connected      = False
-        props.connection_status = "Disconnected"
+        wm = context.window_manager
+        wm.serial_is_connected      = False         
+        wm.serial_connection_status = "Disconnected"
         self.report({"INFO"}, "Disconnected")
         return {"FINISHED"}
-
 
 
 #  Send-side object management
@@ -255,7 +249,6 @@ class RemoveSendObject(Operator):
         return {"FINISHED"}
 
 
-
 #  Mode selector
 class SerialThreadModeOperator(bpy.types.Operator):
     """Operator to select serial thread mode"""
@@ -268,7 +261,6 @@ class SerialThreadModeOperator(bpy.types.Operator):
         worker_manager.set_mode(self.modes)
         self.report({"INFO"}, f"Mode set to: {self.modes}")
         return {"FINISHED"}
-
 
 
 #  Info popup
@@ -317,7 +309,6 @@ class ShowInfoPopup(bpy.types.Operator):
         footer.label(text="by M. Usman | Pakistan")
 
 
-
 def register():
     bpy.types.Scene.send_data_method = bpy.props.EnumProperty(
         name="Send Method",
@@ -325,18 +316,19 @@ def register():
             ('KEYFRAME', "Keyframe Based", "Send data using frame change events"),
             ('TIMER',    "Timer Based",    "Send data using a timer function"),
         ],
-        default='KEYFRAME'
+        default='KEYFRAME',
     )
     bpy.types.Scene.send_decimal_places = bpy.props.IntProperty(
         name="Decimal Places",
         description="Number of decimal places when sending transform values",
-        default=2, min=0, max=6, soft_min=0, soft_max=4
+        default=2, min=0, max=6, soft_min=0, soft_max=4,
     )
     bpy.types.Scene.frame_skip_interval = bpy.props.IntProperty(
         name="Frame Skip Interval",
         description="Frames to skip before sending data again (0 = every frame)",
-        default=1, min=0
+        default=1, min=0,
     )
+
 
 def unregister():
     del bpy.types.Scene.send_data_method
