@@ -2,6 +2,7 @@ import bpy
 import threading
 import time
 
+
 class DebugManager:
     def __init__(self):
         self.enabled = False
@@ -17,27 +18,29 @@ class DebugManager:
         with self.lock:
             print(f"[{timestamp}] {message}")
 
-    def error(self, msg): self.log(f"[ERROR] {msg}")
-    def event(self, msg): self.log(f"[EVENT] {msg}")
-    def data(self, msg): self.log(f"[DATA] {msg}")
+    def error(self,   msg): self.log(f"[ERROR] {msg}")
+    def event(self,   msg): self.log(f"[EVENT] {msg}")
+    def data(self,    msg): self.log(f"[DATA] {msg}")
     def verbose(self, msg): self.log(f"[VERBOSE] {msg}")
 
 
 debug_manager = DebugManager()
 
-def update_debug_state(self, context):
-    if hasattr(self, "serial_debug_enabled"):
-        debug_manager.set_enabled(self.serial_debug_enabled)
+
+def _update_debug_state(self, context):
+    debug_manager.set_enabled(self.serial_debug_enabled)
+
 
 def register():
-    if not hasattr(bpy.types.Scene, "serial_debug_enabled"):
-        bpy.types.Scene.serial_debug_enabled = bpy.props.BoolProperty(
+    if not hasattr(bpy.types.WindowManager, "serial_debug_enabled"):
+        bpy.types.WindowManager.serial_debug_enabled = bpy.props.BoolProperty(
             name="Enable Debug",
             description="Enable or disable serial logging",
             default=False,
-            update=update_debug_state
+            update=_update_debug_state,
         )
 
+
 def unregister():
-    if hasattr(bpy.types.Scene, "serial_debug_enabled"):
-        del bpy.types.Scene.serial_debug_enabled
+    if hasattr(bpy.types.WindowManager, "serial_debug_enabled"):
+        del bpy.types.WindowManager.serial_debug_enabled
