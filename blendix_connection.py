@@ -25,10 +25,9 @@ def list_ports():
         return []
 
 
-
 #  Port-list watcher
-_PORT_POLL_INTERVAL = 2.0       
-_last_known_ports: set = set()   
+_PORT_POLL_INTERVAL = 2.0
+_last_known_ports: set = set()
 
 
 def _port_watcher() -> float | None:
@@ -58,7 +57,6 @@ class WorkerManager:
         self.protocol_format: str = "CSV"
         self._connected: bool = False
 
-        #  Persistent connect request (eliminates race)
         self._wants_connect: bool = False
         self._connect_port: str = ""
         self._connect_baud: int = 9600
@@ -80,10 +78,8 @@ class WorkerManager:
         try:
             import serial
             env["PYTHONPATH"] = os.path.dirname(os.path.dirname(serial.__file__))
-            #print(f"[blendixserial] PYTHONPATH → {env['PYTHONPATH']}")
         except ImportError:
-            print(
-                "[blendixserial] ERROR: PySerial not found.\n")
+            print("[blendixserial] ERROR: PySerial not found.\n")
             return
 
         self._process = subprocess.Popen(
@@ -110,7 +106,6 @@ class WorkerManager:
                 sock.close()
                 return False
 
-            # Give worker a bit more time on first launch
             _, writable, _ = select.select([], [sock], [], 0.08)
             if writable:
                 self._sock = sock
@@ -137,10 +132,8 @@ class WorkerManager:
     def poll_events(self) -> list:
         events = []
 
-        # Ensure worker + socket
         self._ensure_socket()
 
-        # If user wants to connect and socket is ready → send CONNECT now
         if self._wants_connect and self._sock is not None:
             cmd = {
                 "cmd": "CONNECT",
@@ -151,7 +144,6 @@ class WorkerManager:
             self._send_cmd(cmd)
             debug_manager.event(f"[MANAGER] CONNECT sent → {self._connect_port} @ {self._connect_baud} [{self._connect_fmt}]")
 
-        # Read incoming data
         if self._sock is not None:
             try:
                 while True:
@@ -167,7 +159,6 @@ class WorkerManager:
                 self._sock = None
                 self._connected = False
 
-        # Process received lines
         while "\n" in self._recv_buf:
             line, self._recv_buf = self._recv_buf.split("\n", 1)
             line = line.strip()
@@ -183,7 +174,7 @@ class WorkerManager:
 
                     if status == "connected":
                         self._connected = True
-                        self._wants_connect = False          # SUCCESS → stop retrying
+                        self._wants_connect = False
                     elif status in ("disconnected", "error"):
                         self._connected = False
 
@@ -214,7 +205,7 @@ class WorkerManager:
         self._wants_connect = True
 
         debug_manager.event(f"[MANAGER] Connect REQUESTED → {port} @ {baud} [{fmt}]")
-        self._ensure_socket()   # immediate attempt
+        self._ensure_socket()
 
     def disconnect(self):
         self._send_cmd({"cmd": "DISCONNECT"})
@@ -245,8 +236,9 @@ class WorkerManager:
             self._send_cmd({"cmd": "SET_MODE", "mode": mode})
             debug_manager.event(f"[MANAGER] Mode → {mode}")
 
-    def update_settings(self, scene):
-        fmt = scene.protocol_format
+    def update_settings(self, wm):
+        """Accept a WindowManager instead of a Scene."""
+        fmt = wm.serial_thread_format
         if fmt != self.protocol_format:
             self.protocol_format = fmt
             self._send_cmd({"cmd": "SET_FORMAT", "format": fmt})
@@ -274,28 +266,30 @@ def _update_serial_thread_mode(self, context):
 
 
 def register():
-    bpy.types.Scene.serial_thread_modes = bpy.props.EnumProperty(
+    bpy.types.WindowManager.serial_thread_modes = bpy.props.EnumProperty(
         name="Serial Thread Mode",
-        items=[('send', "Send", ""), ('receive', "Receive", ""), ('both', "Bidirectional", "")],
+        items=[
+            ('send',    "Send",          ""),
+            ('receive', "Receive",       ""),
+            ('both',    "Bidirectional", ""),
+        ],
         default='receive',
         update=_update_serial_thread_mode,
     )
-    bpy.types.Scene.protocol_format = bpy.props.EnumProperty(
+    bpy.types.WindowManager.serial_thread_format = bpy.props.EnumProperty(
         name="Data Format",
         items=[('CSV', "CSV", ""), ('PROTOCOL', "Protocol", "")],
         default='CSV',
     )
 
-    # Start the port watcher timer.
     if not bpy.app.timers.is_registered(_port_watcher):
         bpy.app.timers.register(_port_watcher, first_interval=_PORT_POLL_INTERVAL, persistent=True)
 
 
 def unregister():
-    # Stop the port watcher timer before tearing down.
     if bpy.app.timers.is_registered(_port_watcher):
         bpy.app.timers.unregister(_port_watcher)
 
-    del bpy.types.Scene.serial_thread_modes
-    del bpy.types.Scene.protocol_format
+    del bpy.types.WindowManager.serial_thread_modes
+    del bpy.types.WindowManager.serial_thread_format
     worker_manager.shutdown()
