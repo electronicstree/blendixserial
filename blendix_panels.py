@@ -5,61 +5,62 @@ from .blendix_vit_properties import get_allowed_controls, CONTROL_ORDER, ensure_
 
 
 class SerialConnectionPanel(Panel):
-    bl_label = "BLENDIX SERIAL"
-    bl_idname = "SCENE_PT_serial_connection"
-    bl_space_type = "VIEW_3D"
+    bl_label       = "BLENDIX SERIAL"
+    bl_idname      = "SCENE_PT_serial_connection"
+    bl_space_type  = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "blendixserial"
+    bl_category    = "blendixserial"
 
     def draw(self, context):
         layout = self.layout
-        scene = context.scene
+        scene  = context.scene
+        wm     = context.window_manager          
         serial_props = scene.serial_connection_properties
 
-        layout.use_property_split = True
+        layout.use_property_split    = True
         layout.use_property_decorate = False
 
         layout.label(text="Connection Settings", icon='PLUGIN')
         main_box = layout.box()
         row = main_box.row(align=True)
-        if not serial_props.is_connected:
+
+        if not wm.serial_is_connected:            
             row.operator("serial.connect", text="Connect", icon='LINKED')
         else:
             row.operator("serial.disconnect", text="Disconnect", icon='UNLINKED')
 
         row.separator()
 
-        if hasattr(scene, "serial_debug_enabled"):
-            row.prop(scene, "serial_debug_enabled", text="", icon='CONSOLE', toggle=True)
+        if hasattr(wm, "serial_debug_enabled"):   
+            row.prop(wm, "serial_debug_enabled", text="", icon='CONSOLE', toggle=True)
         else:
             row.label(text="", icon='CONSOLE')
 
         row.operator("wm.object_prop_window_info", text="", icon="QUESTION")
 
         col = main_box.column(align=True)
-        col.enabled = not serial_props.is_connected
+        col.enabled = not wm.serial_is_connected  
         col.prop(serial_props, "port_name", text="Com Port")
         col.prop(serial_props, "baud_rate", text="Baud Rate")
 
-        main_box.label(text=serial_props.connection_status, icon='INFO')
+        main_box.label(text=wm.serial_connection_status, icon='INFO') 
 
-
-    
 
 class UserInterfacePanel(Panel):
-    bl_label = "3D Object Control"
-    bl_idname = "OBJECT_PT_blendix_panel"
-    bl_space_type = "VIEW_3D"
+    bl_label       = "3D Object Control"
+    bl_idname      = "OBJECT_PT_blendix_panel"
+    bl_space_type  = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "blendixserial"
-    bl_parent_id = "SCENE_PT_serial_connection"  
+    bl_category    = "blendixserial"
+    bl_parent_id   = "SCENE_PT_serial_connection"
 
     def draw(self, context):
-        layout = self.layout
-        scene = context.scene
-        serial_mode = scene.serial_thread_modes  
+        layout     = self.layout
+        scene      = context.scene
+        wm         = context.window_manager
+        serial_mode = wm.serial_thread_modes      
 
-        layout.use_property_split = True
+        layout.use_property_split    = True
         layout.use_property_decorate = False
 
         main_box = layout.box()
@@ -68,15 +69,15 @@ class UserInterfacePanel(Panel):
         if worker_manager.pause_movement:
             row.operator("object.start_movement", text="Start Movement", icon='PLAY')
         else:
-            row.operator("object.stop_movement", text="Stop Movement", icon='PAUSE')
+            row.operator("object.stop_movement",  text="Stop Movement",  icon='PAUSE')
 
         col = main_box.column(align=True)
-        col.use_property_split = True
+        col.use_property_split    = True
         col.use_property_decorate = False
 
         col.prop(scene, "updateSceneDelay", text="Update Scene", slider=True)
-        col.prop(scene, "serial_thread_modes", text="Mode")
-        col.prop(scene, "protocol_format", text="Data Format")
+        col.prop(wm, "serial_thread_modes", text="Mode")         
+        col.prop(wm, "serial_thread_format", text="Data Format")  
 
         tab_col = main_box.column(align=True)
 
@@ -91,25 +92,18 @@ class UserInterfacePanel(Panel):
             else:
                 self.draw_send_tab(tab_col, scene)
 
-
     def draw_receive_tab(self, layout, scene):
         main_box = layout.box()
         main_box.label(text="Receiving Mode", icon='IMPORT')
 
         col = main_box.column(align=True)
-        col.use_property_split = True 
+        col.use_property_split    = True
         col.use_property_decorate = False
 
-        col.label(text="Text Object")  
-        col.prop_search(
-            scene,
-            "received_text",
-            scene,
-            "objects",
-            text=""
-        )
+        col.label(text="Text Object")
+        col.prop_search(scene, "received_text", scene, "objects", text="")
 
-        col.label(text="Add Object") 
+        col.label(text="Add Object")
         col.operator("object.add_object", text="Add", icon="ADD", emboss=True)
 
         for i, item in enumerate(scene.custom_object_collection):
@@ -122,20 +116,17 @@ class UserInterfacePanel(Panel):
             button_row = split_content.row(align=True)
             settings = button_row.operator("wm.object_prop_window", text="", icon="PRESET")
             settings.index = i
-
             remove = button_row.operator("object.remove_custom_object", text="", icon="X")
             remove.index = i
 
-
     def draw_send_tab(self, layout, scene):
-        import bpy
         obj = bpy.context.active_object
 
         main_box = layout.box()
         main_box.label(text="Sending Mode", icon="EXPORT")
 
         col = main_box.column(align=True)
-        col.use_property_split = True 
+        col.use_property_split    = True
         col.use_property_decorate = False
 
         col.prop(scene, "send_data_method", text="Send Method")
@@ -146,11 +137,10 @@ class UserInterfacePanel(Panel):
         col.operator("object.add_send_object", text="Add Object", icon="ADD")
         col.separator()
 
-        send_object_factor = 0.25  
-        dropdown_factor = 0.7     
+        send_object_factor = 0.25
+        dropdown_factor    = 0.7
 
         for i, item in enumerate(scene.send_object_collection):
-
             split_main = col.split(factor=send_object_factor)
             split_main.label(text=f"Object {i + 1}")
 
@@ -158,19 +148,9 @@ class UserInterfacePanel(Panel):
             split_content.prop(item, "sel_object", text="")
 
             button_row = split_content.row(align=True)
-
-            settings = button_row.operator(
-                "wm.object_prop_window_send",
-                text="",
-                icon="PRESET"
-            )
+            settings = button_row.operator("wm.object_prop_window_send", text="", icon="PRESET")
             settings.index = i
-
-            remove = button_row.operator(
-                "object.remove_send_object",
-                text="",
-                icon="X"
-            )
+            remove = button_row.operator("object.remove_send_object", text="", icon="X")
             remove.index = i
 
         layout.separator(factor=0.5)
@@ -189,7 +169,7 @@ class UserInterfacePanel(Panel):
         element_box.operator("vim.unmark_element", text="Unmark", icon='X')
 
         col = element_box.column(align=True)
-        col.use_property_split = True
+        col.use_property_split    = True
         col.use_property_decorate = False
 
         col.prop(obj, "vim_preset")
@@ -224,11 +204,8 @@ class UserInterfacePanel(Panel):
                     sub = right.row(align=True)
                     sub.enabled = control in allowed
                     sub.prop_enum(
-                        obj,
-                        "vim_control_type",
-                        control,
-                        text="",
-                        icon=ICON_MAP.get(control, 'DOT')
+                        obj, "vim_control_type", control,
+                        text="", icon=ICON_MAP.get(control, 'DOT'),
                     )
 
             if allowed.intersection({'rotation', 'location', 'scale'}):
@@ -241,9 +218,5 @@ class UserInterfacePanel(Panel):
                 col.prop(obj, "vim_positions")
 
         layout.separator()
-        layout.operator(
-            "vim.interactive_mode",
-            text="Start Interactive Mode",
-            icon='MOD_ARMATURE'
-        )
+        layout.operator("vim.interactive_mode", text="Start Interactive Mode", icon='MOD_ARMATURE')
         layout.label(text="Press Esc or RMB to exit.")
