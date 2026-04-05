@@ -35,7 +35,7 @@ PRESETS = {
     'TOGGLE_SWITCH': {
         'name':             'Toggle Switch',
         'default_control':  'rotation',
-        'allowed_controls': {'rotation'},               # rotation only
+        'allowed_controls': {'rotation', 'location'},   # rotation and location
         'axis':             'Y',
         'min':              0.0,
         'max':              math.radians(39.5),
