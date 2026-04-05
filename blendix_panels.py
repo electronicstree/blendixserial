@@ -43,7 +43,14 @@ class SerialConnectionPanel(Panel):
         col.prop(serial_props, "port_name", text="Com Port")
         col.prop(serial_props, "baud_rate", text="Baud Rate")
 
-        main_box.label(text=wm.serial_connection_status, icon='INFO') 
+        status = wm.serial_connection_status
+        if status == "Error":
+            icon = 'ERROR'
+        elif status == "Connected":
+            icon = 'CHECKMARK'
+        else:
+            icon = 'X'
+        main_box.label(text=status, icon=icon)
 
 
 class UserInterfacePanel(Panel):
