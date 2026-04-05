@@ -132,10 +132,16 @@ def timer_func():
             wm = bpy.context.window_manager          # runtime state on WindowManager
             if status == "connected":
                 wm.serial_is_connected      = True
-                wm.serial_connection_status = msg or "Connected"
-            elif status in ("disconnected", "error"):
+                wm.serial_connection_status = "Connected"
+                debug_manager.event(f"[CONNECTION] {msg}")
+            elif status == "disconnected":
                 wm.serial_is_connected      = False
-                wm.serial_connection_status = msg or status.capitalize()
+                wm.serial_connection_status = "Disconnected"
+                debug_manager.event(f"[CONNECTION] Disconnected: {msg}")
+            elif status == "error":
+                wm.serial_is_connected      = False
+                wm.serial_connection_status = "Error"
+                debug_manager.error(f"[CONNECTION] Error: {msg}")
 
         elif tag in ("CSV", "PROTOCOL") and not worker_manager.pause_movement:
             # Only parse data events when movement is allowed
