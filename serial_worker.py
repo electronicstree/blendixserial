@@ -1,4 +1,3 @@
-
 # serial_worker.py |  blendixserial Worker Process
 # ------------------------------------------------
 # Runs as a subprocess launched by Blender.
@@ -75,7 +74,8 @@ class WorkerState:
         self.ser: serial.Serial | None = None
         self.mode: str = "receive"          # send | receive | both
         self.protocol_format: str = "CSV"   # CSV | PROTOCOL
-        self.rx_buffer = bytearray()
+        self.rx_buffer = bytearray()        # binary buffer for PROTOCOL mode
+        self.csv_buffer: str = ""           # text buffer for CSV mode
         self.send_queue: list = []          # pending outbound items
 
 
@@ -126,13 +126,21 @@ def do_receive(state: WorkerState, conn):
     else:  # CSV
         if ser.in_waiting:
             try:
-                line = ser.readline().decode(errors="replace").rstrip()
-                if line and is_valid_csv(line):
-                    send_event(conn, {"tag": "CSV", "data": line})
-                elif line:
-                    log(conn, "error", f"[RX-CSV] Invalid: {line}")
+                state.csv_buffer += ser.read(ser.in_waiting).decode(errors="replace")
             except Exception as e:
                 log(conn, "error", f"[RX-CSV] Read error: {e}")
+                return
+
+        # Process all complete lines (terminated by \n) from the buffer
+        while "\n" in state.csv_buffer:
+            line, state.csv_buffer = state.csv_buffer.split("\n", 1)
+            line = line.strip()
+            if not line:
+                continue
+            if is_valid_csv(line):
+                send_event(conn, {"tag": "CSV", "data": line})
+            else:
+                log(conn, "error", f"[RX-CSV] Invalid: {line}")
 
 
 def do_send(state: WorkerState, conn):
