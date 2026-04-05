@@ -58,6 +58,7 @@ class WorkerManager:
         self._connected: bool = False
 
         self._wants_connect: bool = False
+        self._connect_sent: bool = False
         self._connect_port: str = ""
         self._connect_baud: int = 9600
         self._connect_fmt: str = "CSV"
@@ -134,7 +135,7 @@ class WorkerManager:
 
         self._ensure_socket()
 
-        if self._wants_connect and self._sock is not None:
+        if self._wants_connect and not self._connect_sent and self._sock is not None:
             cmd = {
                 "cmd": "CONNECT",
                 "port": self._connect_port,
@@ -142,6 +143,7 @@ class WorkerManager:
                 "format": self._connect_fmt
             }
             self._send_cmd(cmd)
+            self._connect_sent = True
             debug_manager.event(f"[MANAGER] CONNECT sent → {self._connect_port} @ {self._connect_baud} [{self._connect_fmt}]")
 
         if self._sock is not None:
@@ -175,8 +177,11 @@ class WorkerManager:
                     if status == "connected":
                         self._connected = True
                         self._wants_connect = False
+                        self._connect_sent = False
                     elif status in ("disconnected", "error"):
                         self._connected = False
+                        self._wants_connect = False
+                        self._connect_sent = False
 
                 elif evt.get("tag") == "LOG":
                     msg = evt.get("msg", "")
@@ -203,6 +208,7 @@ class WorkerManager:
         self._connect_baud = baud
         self._connect_fmt = fmt
         self._wants_connect = True
+        self._connect_sent = False
 
         debug_manager.event(f"[MANAGER] Connect REQUESTED → {port} @ {baud} [{fmt}]")
         self._ensure_socket()
