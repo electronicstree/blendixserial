@@ -7,7 +7,7 @@ import struct
 from bpy.app.handlers import persistent
 
 from .blendix_connection import worker_manager
-from .debug_manager import debug_manager
+from .serial_log import serial_logger
 
 
 
@@ -40,7 +40,7 @@ def parse_protocol_message(full_msg_hex: str):
     try:
         full_msg = bytes.fromhex(full_msg_hex)
     except ValueError:
-        debug_manager.error("[PARSE] Invalid hex in PROTOCOL event")
+        serial_logger.error("[PARSE] Invalid hex in PROTOCOL event")
         return [], ""
 
     try:
@@ -58,7 +58,7 @@ def parse_protocol_message(full_msg_hex: str):
         for b in full_msg[1:5 + payload_len]:
             calc ^= b
         if calc != received_checksum:
-            debug_manager.error("[PARSE] Checksum mismatch")
+            serial_logger.error("[PARSE] Checksum mismatch")
             return [], ""
 
         numerical = []
@@ -90,14 +90,14 @@ def parse_protocol_message(full_msg_hex: str):
             elif msg_type == 2:
                 text = payload.decode("utf-8", errors="replace")
 
-        debug_manager.data(
+        serial_logger.data(
             f"[PARSED] msg_type={msg_type}, obj_count={obj_count}, "
             f"values={numerical}, text='{text}'"
         )
         return numerical, text
 
     except Exception as e:
-        debug_manager.error(f"[PARSE] Protocol parse error → {e}")
+        serial_logger.error(f"[PARSE] Protocol parse error → {e}")
         return [], ""
 
 
@@ -128,20 +128,20 @@ def timer_func():
         if tag == "STATUS":
             status = evt.get("status", "")
             msg    = evt.get("msg", "")
-            debug_manager.event(f"[STATUS] {status}: {msg}")
+            serial_logger.event(f"[STATUS] {status}: {msg}")
             wm = bpy.context.window_manager          # runtime state on WindowManager
             if status == "connected":
                 wm.serial_is_connected      = True
                 wm.serial_connection_status = "Connected"
-                debug_manager.event(f"[CONNECTION] {msg}")
+                serial_logger.event(f"[CONNECTION] {msg}")
             elif status == "disconnected":
                 wm.serial_is_connected      = False
                 wm.serial_connection_status = "Disconnected"
-                debug_manager.event(f"[CONNECTION] Disconnected: {msg}")
+                serial_logger.event(f"[CONNECTION] Disconnected: {msg}")
             elif status == "error":
                 wm.serial_is_connected      = False
                 wm.serial_connection_status = "Error"
-                debug_manager.error(f"[CONNECTION] Error: {msg}")
+                serial_logger.error(f"[CONNECTION] Error: {msg}")
 
         elif tag in ("CSV", "PROTOCOL") and not worker_manager.pause_movement:
             # Only parse data events when movement is allowed
@@ -212,14 +212,14 @@ def send_serial_data():
                     msg_type = 3
 
                 binary_msg = build_protocol_message(msg_type, obj_data, text_to_send)
-                debug_manager.data(f"[TX] Protocol type {msg_type} → {len(binary_msg)} bytes")
+                serial_logger.data(f"[TX] Protocol type {msg_type} → {len(binary_msg)} bytes")
                 worker_manager.send(binary_msg)
             else:
-                debug_manager.data("[TX] No protocol data to send")
+                serial_logger.data("[TX] No protocol data to send")
 
     except Exception as e:
         fmt = "CSV" if wm.serial_thread_format == "CSV" else "Protocol"  
-        debug_manager.error(f"[TX] {fmt} send error → {e}")
+        serial_logger.error(f"[TX] {fmt} send error → {e}")
         worker_manager.disconnect()
 
 
