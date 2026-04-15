@@ -8,7 +8,7 @@ import os
 import bpy
 import select
 
-from .debug_manager import debug_manager
+from .serial_log import serial_logger
 
 
 def _find_free_port() -> int:
@@ -75,21 +75,20 @@ class WorkerManager:
             return
         self._tcp_port = _find_free_port()
         script = self._worker_script_path()
-        env = os.environ.copy()
+
         try:
             import serial
-            env["PYTHONPATH"] = os.path.dirname(os.path.dirname(serial.__file__))
+            serial_path = os.path.dirname(os.path.dirname(serial.__file__))
         except ImportError:
             print("[blendixserial] ERROR: PySerial not found.\n")
             return
 
         self._process = subprocess.Popen(
-            [sys.executable, script, str(self._tcp_port)],
+            [sys.executable, *bpy.app.python_args, script, str(self._tcp_port), serial_path],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            env=env,
         )
-        debug_manager.event(f"[WORKER] Subprocess started (PID {self._process.pid}), port {self._tcp_port}")
+        serial_logger.event(f"[WORKER] Subprocess started (PID {self._process.pid}), port {self._tcp_port}")
 
     def _ensure_socket(self) -> bool:
         if self._sock is not None:
@@ -110,14 +109,14 @@ class WorkerManager:
             _, writable, _ = select.select([], [sock], [], 0.08)
             if writable:
                 self._sock = sock
-                debug_manager.event(f"[WORKER] Socket connected → 127.0.0.1:{self._tcp_port}")
+                serial_logger.event(f"[WORKER] Socket connected → 127.0.0.1:{self._tcp_port}")
                 return True
             else:
                 sock.close()
                 return False
 
         except Exception as e:
-            debug_manager.error(f"[WORKER] Socket creation failed: {e}")
+            serial_logger.error(f"[WORKER] Socket creation failed: {e}")
             return False
 
     def _send_cmd(self, obj: dict):
@@ -127,7 +126,7 @@ class WorkerManager:
             line = json.dumps(obj) + "\n"
             self._sock.sendall(line.encode("utf-8"))
         except Exception as e:
-            debug_manager.error(f"[WORKER] Send failed: {e}")
+            serial_logger.error(f"[WORKER] Send failed: {e}")
             self._sock = None
 
     def poll_events(self) -> list:
@@ -144,7 +143,7 @@ class WorkerManager:
             }
             self._send_cmd(cmd)
             self._connect_sent = True
-            debug_manager.event(f"[MANAGER] CONNECT sent → {self._connect_port} @ {self._connect_baud} [{self._connect_fmt}]")
+            serial_logger.event(f"[MANAGER] CONNECT sent → {self._connect_port} @ {self._connect_baud} [{self._connect_fmt}]")
 
         if self._sock is not None:
             try:
@@ -172,7 +171,7 @@ class WorkerManager:
                 if evt.get("tag") == "STATUS":
                     status = evt.get("status", "")
                     msg = evt.get("msg", "")
-                    debug_manager.event(f"[STATUS] {status}: {msg}")
+                    serial_logger.event(f"[STATUS] {status}: {msg}")
 
                     if status == "connected":
                         self._connected = True
@@ -187,15 +186,15 @@ class WorkerManager:
                     msg = evt.get("msg", "")
                     level = evt.get("level", "info")
                     if level == "error":
-                        debug_manager.error(msg)
+                        serial_logger.error(msg)
                     else:
-                        debug_manager.event(msg)
+                        serial_logger.event(msg)
                     continue
 
                 events.append(evt)
 
             except json.JSONDecodeError:
-                debug_manager.error(f"[WORKER] Bad JSON: {line}")
+                serial_logger.error(f"[WORKER] Bad JSON: {line}")
 
         return events
 
@@ -210,7 +209,7 @@ class WorkerManager:
         self._wants_connect = True
         self._connect_sent = False
 
-        debug_manager.event(f"[MANAGER] Connect REQUESTED → {port} @ {baud} [{fmt}]")
+        serial_logger.event(f"[MANAGER] Connect REQUESTED → {port} @ {baud} [{fmt}]")
         self._ensure_socket()
 
     def disconnect(self):
@@ -240,7 +239,7 @@ class WorkerManager:
         if mode in ("send", "receive", "both") and self.mode != mode:
             self.mode = mode
             self._send_cmd({"cmd": "SET_MODE", "mode": mode})
-            debug_manager.event(f"[MANAGER] Mode → {mode}")
+            serial_logger.event(f"[MANAGER] Mode → {mode}")
 
     def update_settings(self, wm):
         """Accept a WindowManager instead of a Scene."""
