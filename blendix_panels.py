@@ -31,8 +31,8 @@ class SerialConnectionPanel(Panel):
 
         row.separator()
 
-        if hasattr(wm, "serial_debug_enabled"):   
-            row.prop(wm, "serial_debug_enabled", text="", icon='CONSOLE', toggle=True)
+        if hasattr(wm, "serial_log_enabled"):   
+            row.prop(wm, "serial_log_enabled", text="", icon='CONSOLE', toggle=True)
         else:
             row.label(text="", icon='CONSOLE')
 
