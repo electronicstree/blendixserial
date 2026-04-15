@@ -24,6 +24,13 @@
 
 
 import sys
+
+# Insert the PySerial path passed from Blender as argv[2] before importing serial.
+# This is required because Blender launches subprocesses with -I (isolated mode),
+# which ignores PYTHONPATH entirely, so the path must be injected via sys.path.
+if len(sys.argv) > 2 and sys.argv[2] not in sys.path:
+    sys.path.insert(0, sys.argv[2])
+
 import json
 import socket
 import serial
