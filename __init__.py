@@ -54,15 +54,22 @@
 
 
 # 5/4/2026 - M.Usman - electronicstree.com
+#-------------------------------------------
 # - Replaced auto_load with explicit module registration (Blender extension platform requirement).
 # - Moved runtime-only properties (connection state, mode, format, debug) to WindowManager.
+
+
+# 15/4/2026 - M.Usman - electronicstree.com
+#-------------------------------------------
+# - Worker subprocess now passes bpy.app.python_args to stay inside Blender's Python environment.
+# - Renamed debug_manager.py to serial_log.py to reflect its purpose as a user-facing diagnostic tool.
+# - Removed leftover threading import from serial_log.py.
 
 
 import bpy
 import inspect
 
 from . import (
-    debug_manager,
     blendix_connection,
     blendix_properties,
     blendix_vit_properties,
@@ -71,12 +78,13 @@ from . import (
     blendix_vit_gizmo,
     blendix_panels,
     blendix_gdaoc,
+    serial_log,
 )
 
 
 
 _modules = [
-    debug_manager,
+    serial_log,
     blendix_connection,
     blendix_properties,
     blendix_vit_properties,
