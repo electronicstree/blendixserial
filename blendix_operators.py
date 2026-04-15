@@ -282,7 +282,7 @@ class ShowInfoPopup(bpy.types.Operator):
 
         header = col.row()
         header.label(text="blendixserial", icon="PLUGIN")
-        col.label(text="2.2.0")
+        col.label(text="2.2.1")
         col.separator()
 
         col.label(text="A real-time Serial communication bridge between Blender and")
