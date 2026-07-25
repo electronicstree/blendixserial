@@ -1,6 +1,7 @@
 # blendixserial (subprocess + TCP edition)
 
 import socket
+import errno
 import json
 import subprocess
 import sys
@@ -102,12 +103,14 @@ class WorkerManager:
             sock.setblocking(False)
             err = sock.connect_ex(("127.0.0.1", self._tcp_port))
 
-            if err not in (0, 10035, 115):
+            if err not in (0, errno.EINPROGRESS, errno.EWOULDBLOCK,
+                           10035, 115, 36):
                 sock.close()
                 return False
 
             _, writable, _ = select.select([], [sock], [], 0.08)
-            if writable:
+            if writable and sock.getsockopt(socket.SOL_SOCKET,
+                                            socket.SO_ERROR) == 0:
                 self._sock = sock
                 serial_logger.event(f"[WORKER] Socket connected → 127.0.0.1:{self._tcp_port}")
                 return True
@@ -142,7 +145,8 @@ class WorkerManager:
                 "format": self._connect_fmt
             }
             self._send_cmd(cmd)
-            self._connect_sent = True
+            if self._sock is not None:      # send may have torn the socket
+                self._connect_sent = True
             serial_logger.event(f"[MANAGER] CONNECT sent → {self._connect_port} @ {self._connect_baud} [{self._connect_fmt}]")
 
         if self._sock is not None:
