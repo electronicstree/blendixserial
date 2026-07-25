@@ -147,7 +147,7 @@ class WorkerManager:
             self._send_cmd(cmd)
             if self._sock is not None:      # send may have torn the socket
                 self._connect_sent = True
-            serial_logger.event(f"[MANAGER] CONNECT sent → {self._connect_port} @ {self._connect_baud} [{self._connect_fmt}]")
+                serial_logger.event(f"[MANAGER] CONNECT sent → {self._connect_port} @ {self._connect_baud} [{self._connect_fmt}]")
 
         if self._sock is not None:
             try:
