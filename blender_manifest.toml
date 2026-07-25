@@ -24,8 +24,13 @@ wheels = [
 [build]
 paths_exclude_pattern = [
   "__pycache__/",
-  ".git",
+  ".git/",
+  ".gitignore",
   ".gitattributes",
+  ".github/",
+  ".vscode/",
   "README.md",
+  "docs/",
+  "*.pyc",
   "*.zip",
 ]
